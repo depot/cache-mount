@@ -1,0 +1,26 @@
+name: Depot Cache mount
+description: Mount a durable cache directory which supports mult-write and shares content between runs
+author: Depot
+branding:
+  icon: package
+  color: gray-dark
+runs:
+  using: node24
+  main: dist/index.js
+  post: dist/post.js
+inputs:
+  path:
+    description: |-
+      The path to the cache directory to mount.
+    default: '/mnt/cache-disk'
+    required: true
+  disk:
+    description: |-
+      The name of the cache disk.
+      Example: "cache-disk"
+    required: true
+  debug:
+    description: |-
+      Enables detailed logging.
+    default: false
+    required: false
