@@ -21,6 +21,12 @@ async function run() {
 
   core.saveState('debug', debug ? 'true' : '')
 
+  if (isPublicForkPR(debug)) {
+    core.warning('Fork PR detected — creating empty directory instead of mounting disk')
+    await fs.promises.mkdir(diskPath, {recursive: true})
+    return
+  }
+
   await core.group('Installing archil', () => ensureArchil(debug))
 
   const {token, identifier, orgID} = await core.group('Acquiring disk token', () => acquireDiskToken(disk, debug))
@@ -56,6 +62,32 @@ async function run() {
     if (debug) core.info(`Setting disk permissions to runner:runner`)
     await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
   })
+}
+
+function isPublicForkPR(debug: boolean): boolean {
+  const eventName = process.env.GITHUB_EVENT_NAME
+  const visibility = process.env.GITHUB_REPOSITORY_VISIBILITY
+  let baseFullName = process.env.GITHUB_PR_BASE_FULL_NAME ?? ''
+  let headFullName = process.env.GITHUB_PR_HEAD_FULL_NAME ?? ''
+
+  if (eventName !== 'pull_request') return false
+  if (visibility !== 'public') return false
+  if (baseFullName && baseFullName === headFullName) return false
+
+  const eventPath = process.env.GITHUB_EVENT_PATH
+  if (eventPath) {
+    try {
+      const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'))
+      baseFullName = event.pull_request?.base?.repo?.full_name ?? ''
+      headFullName = event.pull_request?.head?.repo?.full_name ?? ''
+      if (baseFullName && baseFullName === headFullName) return false
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  if (debug) core.info(`Public fork PR detected: base=${baseFullName}, head=${headFullName}`)
+  return true
 }
 
 async function ensureArchil(debug: boolean) {

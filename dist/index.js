@@ -20549,6 +20549,9 @@ function setFailed(message) {
 function error(message, properties = {}) {
   issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function warning(message, properties = {}) {
+  issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 function info(message) {
   process.stdout.write(message + os5.EOL);
 }
@@ -20585,9 +20588,14 @@ var ARCHIL_BIN = "/usr/bin/archil";
 var client = new HttpClient("depot-cache-mount-action");
 async function run() {
   const diskPath = getInput("path", { required: true });
-  const disk = getInput("disk", { required: true });
+  const disk = getInput("name", { required: true });
   const debug2 = getBooleanInput("debug");
   saveState("debug", debug2 ? "true" : "");
+  if (isPublicForkPR(debug2)) {
+    warning("Fork PR detected \u2014 creating empty directory instead of mounting disk");
+    await fs3.promises.mkdir(diskPath, { recursive: true });
+    return;
+  }
   await group("Installing archil", () => ensureArchil(debug2));
   const { token, identifier, orgID } = await group("Acquiring disk token", () => acquireDiskToken(disk, debug2));
   setSecret(token);
@@ -20619,6 +20627,27 @@ async function run() {
     if (debug2) info(`Setting disk permissions to runner:runner`);
     await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
   });
+}
+function isPublicForkPR(debug2) {
+  const eventName = process.env.GITHUB_EVENT_NAME;
+  const visibility = process.env.GITHUB_REPOSITORY_VISIBILITY;
+  let baseFullName = process.env.GITHUB_PR_BASE_FULL_NAME ?? "";
+  let headFullName = process.env.GITHUB_PR_HEAD_FULL_NAME ?? "";
+  if (eventName !== "pull_request") return false;
+  if (visibility !== "public") return false;
+  if (baseFullName && baseFullName === headFullName) return false;
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (eventPath) {
+    try {
+      const event = JSON.parse(fs3.readFileSync(eventPath, "utf8"));
+      baseFullName = event.pull_request?.base?.repo?.full_name ?? "";
+      headFullName = event.pull_request?.head?.repo?.full_name ?? "";
+      if (baseFullName && baseFullName === headFullName) return false;
+    } catch {
+    }
+  }
+  if (debug2) info(`Public fork PR detected: base=${baseFullName}, head=${headFullName}`);
+  return true;
 }
 async function ensureArchil(debug2) {
   if (fs3.existsSync(ARCHIL_BIN)) {
