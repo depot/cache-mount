@@ -45,7 +45,8 @@ async function run() {
       'mount',
       `depot/${orgID}-${disk}`,
       diskPath,
-      '--region aws-us-east-1',
+      '--region',
+      'aws-us-east-1',
       '--shared',
     ]
     if (debug) core.info(`Mounting disk ${disk} to ${diskPath}`)
