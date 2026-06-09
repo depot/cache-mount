@@ -32,11 +32,13 @@ async function post() {
     const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&identifier=${encodeURIComponent(identifier)}`
     if (debug) core.info(`Requesting: DELETE ${url}`)
     const res = await client.del(url)
+    await res.readBody()
     if (debug) core.info(`Delete response: status=${res.message.statusCode}`)
     if (res.message.statusCode !== 200) {
       throw new Error(`Failed to release disk token (status ${res.message.statusCode})`)
     }
     core.info(`Released disk token for identifier: ${identifier}`)
+    client.dispose()
   })
 }
 
