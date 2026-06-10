@@ -12,7 +12,7 @@ inputs:
   path:
     description: |-
       The path to the cache directory to mount.
-    default: '/tmp/cache-disk'
+      Example: '/tmp/cache-disk'
     required: true
   name:
     description: |-
