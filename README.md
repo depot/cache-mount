@@ -23,7 +23,7 @@ jobs:
 
 | Input      | Required | Default                 | Description                                                     |
 | ---------- | -------- | ----------------------- | --------------------------------------------------------------- |
-| `path`     | **Yes**  | `/tmp/cache-disk`       | OS location to mount the cache disk.                            |
+| `path`     | **Yes**  | -       | OS location to mount the cache disk.                            |
 | `name`     | **Yes**  | —                       | Name of the disk. Reuse the same name across runs to reference it. Created automatically on first use. |
 | `debug`    | No       | `false`                 | Enable verbose logging                                          |
 

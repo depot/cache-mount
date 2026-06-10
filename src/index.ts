@@ -11,7 +11,7 @@ const client = new http.HttpClient('depot-cache-mount-action')
 interface DiskTokenResponse {
   token: string
   identifier: string
-  org_id: string
+  args: string[]
 }
 
 async function run() {
@@ -29,28 +29,20 @@ async function run() {
 
   await core.group('Installing archil', () => ensureArchil(debug))
 
-  const {token, identifier, org_id} = await core.group('Acquiring disk token', () => acquireDiskToken(disk, debug))
+  const {token, identifier, args} = await core.group('Acquiring disk token', () =>
+    acquireDiskToken(disk, diskPath, debug),
+  )
   core.setSecret(token)
   core.saveState('identifier', identifier)
   core.saveState('disk', disk)
   core.saveState('path', diskPath)
-  core.saveState('orgID', org_id)
 
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
     await fs.promises.mkdir(diskPath, {recursive: true})
-    const args = [
-      '--preserve-env=ARCHIL_MOUNT_TOKEN',
-      ARCHIL_BIN,
-      'mount',
-      `depot/${org_id}-${disk}`,
-      diskPath,
-      '--region',
-      'aws-us-east-1',
-      '--shared',
-    ]
+    const cliArgs = ['--preserve-env=ARCHIL_MOUNT_TOKEN', ARCHIL_BIN, 'mount', ...args]
     if (debug) core.info(`Mounting disk ${disk} to ${diskPath}`)
-    await exec.exec('sudo', args, {
+    await exec.exec('sudo', cliArgs, {
       env: {...process.env, ARCHIL_MOUNT_TOKEN: token},
     })
   })
@@ -101,10 +93,10 @@ async function ensureArchil(debug: boolean) {
   await exec.exec('bash', ['-c', 'curl -fsSL https://archil.com/install | sh'])
 }
 
-async function acquireDiskToken(disk: string, debug: boolean): Promise<DiskTokenResponse> {
-  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}`
-  if (debug) core.info(`Requesting disk token: GET ${url}`)
-  const res = await client.getJson<DiskTokenResponse>(url)
+async function acquireDiskToken(disk: string, diskPath: string, debug: boolean): Promise<DiskTokenResponse> {
+  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`
+  if (debug) core.info(`Requesting disk token: POST ${url}`)
+  const res = await client.postJson<DiskTokenResponse>(url, {})
   if (debug) core.info(`Disk token response: status=${res.statusCode}`)
   if (!res.result) {
     throw new Error(`Failed to acquire disk token (status ${res.statusCode})`)

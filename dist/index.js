@@ -20597,27 +20597,20 @@ async function run() {
     return;
   }
   await group("Installing archil", () => ensureArchil(debug2));
-  const { token, identifier, org_id } = await group("Acquiring disk token", () => acquireDiskToken(disk, debug2));
+  const { token, identifier, args } = await group(
+    "Acquiring disk token",
+    () => acquireDiskToken(disk, diskPath, debug2)
+  );
   setSecret(token);
   saveState("identifier", identifier);
   saveState("disk", disk);
   saveState("path", diskPath);
-  saveState("orgID", org_id);
   await group("Mounting disk", async () => {
     if (debug2) info(`Creating directory: ${diskPath}`);
     await fs3.promises.mkdir(diskPath, { recursive: true });
-    const args = [
-      "--preserve-env=ARCHIL_MOUNT_TOKEN",
-      ARCHIL_BIN,
-      "mount",
-      `depot/${org_id}-${disk}`,
-      diskPath,
-      "--region",
-      "aws-us-east-1",
-      "--shared"
-    ];
+    const cliArgs = ["--preserve-env=ARCHIL_MOUNT_TOKEN", ARCHIL_BIN, "mount", ...args];
     if (debug2) info(`Mounting disk ${disk} to ${diskPath}`);
-    await exec("sudo", args, {
+    await exec("sudo", cliArgs, {
       env: { ...process.env, ARCHIL_MOUNT_TOKEN: token }
     });
   });
@@ -20659,10 +20652,10 @@ async function ensureArchil(debug2) {
   info("Installing archil...");
   await exec("bash", ["-c", "curl -fsSL https://archil.com/install | sh"]);
 }
-async function acquireDiskToken(disk, debug2) {
-  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}`;
-  if (debug2) info(`Requesting disk token: GET ${url}`);
-  const res = await client.getJson(url);
+async function acquireDiskToken(disk, diskPath, debug2) {
+  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`;
+  if (debug2) info(`Requesting disk token: POST ${url}`);
+  const res = await client.postJson(url, {});
   if (debug2) info(`Disk token response: status=${res.statusCode}`);
   if (!res.result) {
     throw new Error(`Failed to acquire disk token (status ${res.statusCode})`);
