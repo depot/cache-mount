@@ -1,5 +1,5 @@
-name: Depot Cache mount
-description: Mount a durable cache directory which supports mult-write and shares content between runs
+name: Depot CI Cache disk mount
+description: Mount a durable cache disk which supports mult-write and shares content between runs
 author: Depot
 branding:
   icon: package
