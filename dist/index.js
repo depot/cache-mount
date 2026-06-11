@@ -20599,6 +20599,8 @@ async function run() {
   const disk = getInput("name", { required: true });
   const writeLocks = getMultilineInput("write-lock", { required: false });
   const debug2 = getBooleanInput("debug");
+  const lockWholeDisk = writeLocks.includes(diskPath);
+  const resources = lockWholeDisk ? [diskPath] : writeLocks;
   saveState("debug", debug2 ? "true" : "");
   if (isPublicForkPR(debug2)) {
     warning("Fork PR detected \u2014 creating empty directory instead of mounting disk");
@@ -20614,7 +20616,7 @@ async function run() {
   saveState("identifier", identifier);
   saveState("disk", disk);
   saveState("path", diskPath);
-  saveState("write-lock", writeLocks);
+  saveState("write-lock", resources);
   await group("Mounting disk", async () => {
     if (debug2) info(`Creating directory: ${diskPath}`);
     await fs3.promises.mkdir(diskPath, { recursive: true });
@@ -20624,24 +20626,45 @@ async function run() {
       env: { ...process.env, ARCHIL_MOUNT_TOKEN: token }
     });
   });
-  await group("Fixing permissions", async () => {
-    if (debug2) info(`Setting disk permissions to runner:runner`);
-    await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
-  });
-  await group("Preparing resources", async () => {
-    for (const resource of writeLocks) {
-      if (fs3.existsSync(resource)) continue;
-      if (path4.extname(resource)) continue;
-      if (debug2) info(`Creating directory ${resource}`);
-      await fs3.promises.mkdir(resource, { recursive: true });
+  if (lockWholeDisk) {
+    await group("Locking disk", async () => {
+      if (debug2) info(`Locking ${diskPath} for write`);
+      await exec(ARCHIL_BIN, ["checkout", "-f", diskPath, "-y"]);
+    });
+    await group("Fixing permissions", async () => {
+      if (debug2) info(`Setting disk permissions to runner:runner`);
+      await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
+    });
+  } else if (resources.length > 0) {
+    const missing = resources.filter((resource) => !fs3.existsSync(resource));
+    if (missing.length > 0) {
+      await group("Preparing resources", async () => {
+        if (debug2) info(`Locking ${diskPath} to create missing resources`);
+        await exec(ARCHIL_BIN, ["checkout", "-f", diskPath, "-y"]);
+        if (debug2) info(`Setting disk permissions to runner:runner`);
+        await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
+        for (const resource of missing) {
+          if (path4.extname(resource)) {
+            if (debug2) info(`Creating file ${resource}`);
+            await fs3.promises.mkdir(path4.dirname(resource), { recursive: true });
+            await fs3.promises.writeFile(resource, "");
+          } else {
+            if (debug2) info(`Creating directory ${resource}`);
+            await fs3.promises.mkdir(resource, { recursive: true });
+            await exec("sudo", ["chown", "-R", "runner:runner", resource]);
+          }
+        }
+        if (debug2) info(`Unlocking ${diskPath}`);
+        await exec(ARCHIL_BIN, ["checkin", diskPath, "-y"]);
+      });
     }
-  });
-  await group("Locking resources", async () => {
-    for (const writeLock of writeLocks) {
-      if (debug2) info(`Locking ${writeLock} for write`);
-      await exec(ARCHIL_BIN, ["checkout", writeLock, "-y"]);
-    }
-  });
+    await group("Locking resources", async () => {
+      for (const resource of resources) {
+        if (debug2) info(`Locking ${resource} for write`);
+        await exec(ARCHIL_BIN, ["checkout", resource, "-y"]);
+      }
+    });
+  }
 }
 function isPublicForkPR(debug2) {
   const eventName = process.env.GITHUB_EVENT_NAME;

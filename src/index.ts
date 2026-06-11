@@ -21,6 +21,10 @@ async function run() {
   const writeLocks = core.getMultilineInput('write-lock', {required: false})
   const debug = core.getBooleanInput('debug')
 
+  // Locking the disk root covers everything, so ignore any other paths in that case.
+  const lockWholeDisk = writeLocks.includes(diskPath)
+  const resources = lockWholeDisk ? [diskPath] : writeLocks
+
   core.saveState('debug', debug ? 'true' : '')
 
   if (isPublicForkPR(debug)) {
@@ -38,7 +42,7 @@ async function run() {
   core.saveState('identifier', identifier)
   core.saveState('disk', disk)
   core.saveState('path', diskPath)
-  core.saveState('write-lock', writeLocks)
+  core.saveState('write-lock', resources)
 
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
@@ -50,26 +54,52 @@ async function run() {
     })
   })
 
-  await core.group('Fixing permissions', async () => {
-    if (debug) core.info(`Setting disk permissions to runner:runner`)
-    await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
-  })
+  if (lockWholeDisk) {
+    await core.group('Locking disk', async () => {
+      if (debug) core.info(`Locking ${diskPath} for write`)
+      await exec.exec(ARCHIL_BIN, ['checkout', '-f', diskPath, '-y'])
+    })
 
-  await core.group('Preparing resources', async () => {
-    for (const resource of writeLocks) {
-      if (fs.existsSync(resource)) continue
-      if (path.extname(resource)) continue
-      if (debug) core.info(`Creating directory ${resource}`)
-      await fs.promises.mkdir(resource, {recursive: true})
-    }
-  })
+    await core.group('Fixing permissions', async () => {
+      if (debug) core.info(`Setting disk permissions to runner:runner`)
+      await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
+    })
+  } else if (resources.length > 0) {
+    const missing = resources.filter((resource) => !fs.existsSync(resource))
 
-  await core.group('Locking resources', async () => {
-    for (const writeLock of writeLocks) {
-      if (debug) core.info(`Locking ${writeLock} for write`)
-      await exec.exec(ARCHIL_BIN, ['checkout', writeLock, '-y'])
+    if (missing.length > 0) {
+      // Resources can only be created while holding the whole-disk lock.
+      await core.group('Preparing resources', async () => {
+        if (debug) core.info(`Locking ${diskPath} to create missing resources`)
+        await exec.exec(ARCHIL_BIN, ['checkout', '-f', diskPath, '-y'])
+
+        if (debug) core.info(`Setting disk permissions to runner:runner`)
+        await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
+
+        for (const resource of missing) {
+          if (path.extname(resource)) {
+            if (debug) core.info(`Creating file ${resource}`)
+            await fs.promises.mkdir(path.dirname(resource), {recursive: true})
+            await fs.promises.writeFile(resource, '')
+          } else {
+            if (debug) core.info(`Creating directory ${resource}`)
+            await fs.promises.mkdir(resource, {recursive: true})
+            await exec.exec('sudo', ['chown', '-R', 'runner:runner', resource])
+          }
+        }
+
+        if (debug) core.info(`Unlocking ${diskPath}`)
+        await exec.exec(ARCHIL_BIN, ['checkin', diskPath, '-y'])
+      })
     }
-  })
+
+    await core.group('Locking resources', async () => {
+      for (const resource of resources) {
+        if (debug) core.info(`Locking ${resource} for write`)
+        await exec.exec(ARCHIL_BIN, ['checkout', resource, '-y'])
+      }
+    })
+  }
 }
 
 function isPublicForkPR(debug: boolean): boolean {
