@@ -46,7 +46,7 @@ async function run() {
 
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
-    await fs.promises.mkdir(diskPath, {recursive: true})
+    await exec.exec('sudo', ['mkdir', '-p', diskPath])
     const cliArgs = ['--preserve-env=ARCHIL_MOUNT_TOKEN', ARCHIL_BIN, 'mount', ...args]
     if (debug) core.info(`Mounting disk ${disk} to ${diskPath}`)
     await exec.exec('sudo', cliArgs, {

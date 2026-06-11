@@ -20619,7 +20619,7 @@ async function run() {
   saveState("write-lock", resources);
   await group("Mounting disk", async () => {
     if (debug2) info(`Creating directory: ${diskPath}`);
-    await fs3.promises.mkdir(diskPath, { recursive: true });
+    await exec("sudo", ["mkdir", "-p", diskPath]);
     const cliArgs = ["--preserve-env=ARCHIL_MOUNT_TOKEN", ARCHIL_BIN, "mount", ...args];
     if (debug2) info(`Mounting disk ${disk} to ${diskPath}`);
     await exec("sudo", cliArgs, {
