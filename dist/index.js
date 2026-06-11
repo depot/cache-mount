@@ -20608,7 +20608,8 @@ async function run() {
   saveState("debug", debug2 ? "true" : "");
   if (isPublicForkPR(debug2)) {
     warning("Fork PR detected \u2014 creating empty directory instead of mounting disk");
-    await fs3.promises.mkdir(diskPath, { recursive: true });
+    await exec("sudo", ["mkdir", "-p", diskPath]);
+    await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
     return;
   }
   await group("Installing archil", () => ensureArchil(debug2));

@@ -35,7 +35,8 @@ async function run() {
 
   if (isPublicForkPR(debug)) {
     core.warning('Fork PR detected — creating empty directory instead of mounting disk')
-    await fs.promises.mkdir(diskPath, {recursive: true})
+    await exec.exec('sudo', ['mkdir', '-p', diskPath])
+    await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
     return
   }
 
