@@ -73,23 +73,25 @@ async function run() {
         if (debug) core.info(`Locking ${diskPath} to create missing resources`)
         await exec.exec(ARCHIL_BIN, ['checkout', '-f', diskPath, '-y'])
 
-        if (debug) core.info(`Setting disk permissions to runner:runner`)
-        await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
+        try {
+          if (debug) core.info(`Setting disk permissions to runner:runner`)
+          await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
 
-        for (const resource of missing) {
-          if (path.extname(resource)) {
-            if (debug) core.info(`Creating file ${resource}`)
-            await fs.promises.mkdir(path.dirname(resource), {recursive: true})
-            await fs.promises.writeFile(resource, '')
-          } else {
-            if (debug) core.info(`Creating directory ${resource}`)
-            await fs.promises.mkdir(resource, {recursive: true})
-            await exec.exec('sudo', ['chown', '-R', 'runner:runner', resource])
+          for (const resource of missing) {
+            if (path.extname(resource)) {
+              if (debug) core.info(`Creating file ${resource}`)
+              await fs.promises.mkdir(path.dirname(resource), {recursive: true})
+              await fs.promises.writeFile(resource, '')
+            } else {
+              if (debug) core.info(`Creating directory ${resource}`)
+              await fs.promises.mkdir(resource, {recursive: true})
+              await exec.exec('sudo', ['chown', '-R', 'runner:runner', resource])
+            }
           }
+        } finally {
+          if (debug) core.info(`Unlocking ${diskPath}`)
+          await exec.exec(ARCHIL_BIN, ['checkin', diskPath])
         }
-
-        if (debug) core.info(`Unlocking ${diskPath}`)
-        await exec.exec(ARCHIL_BIN, ['checkin', diskPath, '-y'])
       })
     }
 

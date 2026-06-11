@@ -20641,21 +20641,24 @@ async function run() {
       await group("Preparing resources", async () => {
         if (debug2) info(`Locking ${diskPath} to create missing resources`);
         await exec(ARCHIL_BIN, ["checkout", "-f", diskPath, "-y"]);
-        if (debug2) info(`Setting disk permissions to runner:runner`);
-        await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
-        for (const resource of missing) {
-          if (path4.extname(resource)) {
-            if (debug2) info(`Creating file ${resource}`);
-            await fs3.promises.mkdir(path4.dirname(resource), { recursive: true });
-            await fs3.promises.writeFile(resource, "");
-          } else {
-            if (debug2) info(`Creating directory ${resource}`);
-            await fs3.promises.mkdir(resource, { recursive: true });
-            await exec("sudo", ["chown", "-R", "runner:runner", resource]);
+        try {
+          if (debug2) info(`Setting disk permissions to runner:runner`);
+          await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
+          for (const resource of missing) {
+            if (path4.extname(resource)) {
+              if (debug2) info(`Creating file ${resource}`);
+              await fs3.promises.mkdir(path4.dirname(resource), { recursive: true });
+              await fs3.promises.writeFile(resource, "");
+            } else {
+              if (debug2) info(`Creating directory ${resource}`);
+              await fs3.promises.mkdir(resource, { recursive: true });
+              await exec("sudo", ["chown", "-R", "runner:runner", resource]);
+            }
           }
+        } finally {
+          if (debug2) info(`Unlocking ${diskPath}`);
+          await exec(ARCHIL_BIN, ["checkin", diskPath]);
         }
-        if (debug2) info(`Unlocking ${diskPath}`);
-        await exec(ARCHIL_BIN, ["checkin", diskPath, "-y"]);
       });
     }
     await group("Locking resources", async () => {

@@ -22,7 +22,7 @@ async function post() {
   await core.group('Checking in disk', async () => {
     for (const writeLock of writeLocks) {
       if (debug) core.info(`Unlocking ${writeLock} for write`)
-      await exec.exec(ARCHIL_BIN, ['checkin', writeLock, '-y'])
+      await exec.exec(ARCHIL_BIN, ['checkin', writeLock])
     }
   })
 

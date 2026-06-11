@@ -20539,7 +20539,7 @@ async function post() {
   await group("Checking in disk", async () => {
     for (const writeLock of writeLocks) {
       if (debug2) info(`Unlocking ${writeLock} for write`);
-      await exec(ARCHIL_BIN, ["checkin", writeLock, "-y"]);
+      await exec(ARCHIL_BIN, ["checkin", writeLock]);
     }
   });
   await group("Unmounting disk", async () => {
