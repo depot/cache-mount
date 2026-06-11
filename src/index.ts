@@ -17,6 +17,7 @@ interface DiskTokenResponse {
 async function run() {
   const diskPath = core.getInput('path', {required: true})
   const disk = core.getInput('name', {required: true})
+  const writeLocks = core.getMultilineInput('write-lock', {required: false})
   const debug = core.getBooleanInput('debug')
 
   core.saveState('debug', debug ? 'true' : '')
@@ -36,6 +37,7 @@ async function run() {
   core.saveState('identifier', identifier)
   core.saveState('disk', disk)
   core.saveState('path', diskPath)
+  core.saveState('write-lock', writeLocks)
 
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
@@ -48,8 +50,10 @@ async function run() {
   })
 
   await core.group('Checking out disk', async () => {
-    if (debug) core.info(`Checkout disk at ${diskPath}`)
-    await exec.exec('sudo', [ARCHIL_BIN, 'checkout', diskPath, '-y'])
+    for (const writeLock of writeLocks) {
+      if (debug) core.info(`Locking ${writeLock} for write`)
+      await exec.exec(ARCHIL_BIN, ['checkout', writeLock, '-y'])
+    }
   })
 
   await core.group('Fixing permissions', async () => {

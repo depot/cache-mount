@@ -20531,6 +20531,13 @@ function getInput(name, options) {
   }
   return val.trim();
 }
+function getMultilineInput(name, options) {
+  const inputs = getInput(name, options).split("\n").filter((x) => x !== "");
+  if (options && options.trimWhitespace === false) {
+    return inputs;
+  }
+  return inputs.map((input) => input.trim());
+}
 function getBooleanInput(name, options) {
   const trueValue = ["true", "True", "TRUE"];
   const falseValue = ["false", "False", "FALSE"];
@@ -20589,6 +20596,7 @@ var client = new HttpClient("depot-cache-mount-action");
 async function run() {
   const diskPath = getInput("path", { required: true });
   const disk = getInput("name", { required: true });
+  const writeLocks = getMultilineInput("write-lock", { required: false });
   const debug2 = getBooleanInput("debug");
   saveState("debug", debug2 ? "true" : "");
   if (isPublicForkPR(debug2)) {
@@ -20605,6 +20613,7 @@ async function run() {
   saveState("identifier", identifier);
   saveState("disk", disk);
   saveState("path", diskPath);
+  saveState("write-lock", writeLocks);
   await group("Mounting disk", async () => {
     if (debug2) info(`Creating directory: ${diskPath}`);
     await fs3.promises.mkdir(diskPath, { recursive: true });
@@ -20615,8 +20624,10 @@ async function run() {
     });
   });
   await group("Checking out disk", async () => {
-    if (debug2) info(`Checkout disk at ${diskPath}`);
-    await exec("sudo", [ARCHIL_BIN, "checkout", diskPath, "-y"]);
+    for (const writeLock of writeLocks) {
+      if (debug2) info(`Locking ${writeLock} for write`);
+      await exec(ARCHIL_BIN, ["checkout", writeLock, "-y"]);
+    }
   });
   await group("Fixing permissions", async () => {
     if (debug2) info(`Setting disk permissions to runner:runner`);

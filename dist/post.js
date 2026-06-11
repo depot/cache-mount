@@ -20531,13 +20531,16 @@ async function post() {
   const disk = getState("disk");
   const diskPath = getState("path");
   const debug2 = getState("debug") === "true";
+  const writeLocks = JSON.parse(getState("write-lock") || "[]");
   if (!identifier || !diskPath) {
     info("No mount state found, skipping cleanup");
     return;
   }
   await group("Checking in disk", async () => {
-    if (debug2) info(`Checkin disk at ${diskPath}`);
-    await exec(ARCHIL_BIN, ["checkin", diskPath]);
+    for (const writeLock of writeLocks) {
+      if (debug2) info(`Unlocking ${writeLock} for write`);
+      await exec(ARCHIL_BIN, ["checkin", writeLock, "-y"]);
+    }
   });
   await group("Unmounting disk", async () => {
     if (debug2) info(`Unounting disk ${disk} from ${diskPath}`);

@@ -12,6 +12,7 @@ async function post() {
   const disk = core.getState('disk')
   const diskPath = core.getState('path')
   const debug = core.getState('debug') === 'true'
+  const writeLocks: string[] = JSON.parse(core.getState('write-lock') || '[]')
 
   if (!identifier || !diskPath) {
     core.info('No mount state found, skipping cleanup')
@@ -19,8 +20,10 @@ async function post() {
   }
 
   await core.group('Checking in disk', async () => {
-    if (debug) core.info(`Checkin disk at ${diskPath}`)
-    await exec.exec(ARCHIL_BIN, ['checkin', diskPath])
+    for (const writeLock of writeLocks) {
+      if (debug) core.info(`Unlocking ${writeLock} for write`)
+      await exec.exec(ARCHIL_BIN, ['checkin', writeLock, '-y'])
+    }
   })
 
   await core.group('Unmounting disk', async () => {
