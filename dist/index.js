@@ -20651,6 +20651,7 @@ async function run() {
           } else {
             if (debug2) info(`Creating directory ${resource}`);
             await fs3.promises.mkdir(resource, { recursive: true });
+            await exec("sudo", ["chown", "-R", "runner:runner", resource]);
           }
         }
         if (debug2) info(`Unlocking ${diskPath}`);
@@ -20661,7 +20662,6 @@ async function run() {
       for (const resource of resources) {
         if (debug2) info(`Locking ${resource} for write`);
         await exec(ARCHIL_BIN, ["checkout", resource, "-y"]);
-        await exec("sudo", ["chown", "-R", "runner:runner", resource]);
       }
     });
   }
