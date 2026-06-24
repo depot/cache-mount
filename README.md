@@ -2,6 +2,9 @@
 
 Mount a durable (POSIX compatible), low-latency cache directory that supports multi-write and shares content between runs
 
+> [!IMPORTANT]
+> This action only works in [Depot CI](https://depot.dev/docs/ci/overview) jobs. It will not work on Depot-managed GitHub Actions runners or GitHub-hosted runners.
+
 > The cache mount is not scoped to repository. You may share content across builds within your Depot org.
 
 > Public fork PRs skip mounting and only create the target directory.
