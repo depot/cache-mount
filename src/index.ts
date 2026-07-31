@@ -46,6 +46,12 @@ async function run() {
     await exec.exec('sudo', cliArgs, {
       env: {...process.env, ARCHIL_MOUNT_TOKEN: token},
     })
+
+    if (!process.getuid || !process.getgid) throw new Error('Unable to determine the runner user')
+    const uid = process.getuid()
+    const gid = process.getgid()
+    if (debug) core.info(`Setting disk ownership to ${uid}:${gid}`)
+    await exec.exec('sudo', ['chown', `${uid}:${gid}`, diskPath])
   })
 }
 

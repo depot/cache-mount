@@ -20614,6 +20614,11 @@ async function run() {
     await exec("sudo", cliArgs, {
       env: { ...process.env, ARCHIL_MOUNT_TOKEN: token }
     });
+    if (!process.getuid || !process.getgid) throw new Error("Unable to determine the runner user");
+    const uid = process.getuid();
+    const gid = process.getgid();
+    if (debug2) info(`Setting disk ownership to ${uid}:${gid}`);
+    await exec("sudo", ["chown", `${uid}:${gid}`, diskPath]);
   });
 }
 function isPublicForkPR(debug2) {
