@@ -19,10 +19,6 @@ inputs:
       The name of the cache disk.
       Example: "cache-disk"
     required: true
-  write-lock:
-    description: |-
-      Lock one or multiple directories for write operations.
-    required: false
   debug:
     description: |-
       Enables detailed logging.
