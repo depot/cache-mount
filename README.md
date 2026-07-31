@@ -28,99 +28,22 @@ jobs:
 
 ## Inputs
 
-| Input      | Required | Default                 | Description                                                     |
-| ---------- | -------- | ----------------------- | --------------------------------------------------------------- |
-| `path`     | **Yes**  | -       | OS location to mount the cache disk.                            |
-| `name`     | **Yes**  | -                       | Name of the disk. Reuse the same name across runs to reference it. Created automatically on first use. |
-| `write-lock` | No     | -                       | Lock one or multiple directories for write. If the directory doesn't exist, it will be pre-created.                             |  
-| `debug`    | No       | `false`                 | Enable verbose logging                                          |
-
-## File operations
-
-### Read-only
-By default (when `write-lock` isn't used), the disks are in read-only mode. Technically a single client might perform certain write operations within already existing directories, but the write performance is lacking and we generally advise against it. As a rule of thumb, when `write-lock` isn't used, only use the disk for read operations.
-
-### Exclusive disk locking
-When `write-lock` is set to the `path`, the job exclusively locks the whole disk for writing. This means that other jobs are allowed to read the disk contents, but they will not be able to write to it. When there are multiple paths listed in `write-lock`, but one of them is the `path`, all the others are discarded, and **full lock** is acquired.
-
-#### Example:
-
-**Locking the whole disk exclusively**  
-Other jobs may read, but not write its contents.
-```yaml
-jobs:
-  mount-cache-disk:
-    runs-on: depot-ubuntu-latest
-    steps:
-      - uses: depot/cache-mount@v1
-        with:
-          path: /tmp/cache-mount
-          name: my-disk
-          write-lock: |
-            /tmp/cache-mount
-
-```
-
-**Locking the whole disk exclusively & discarding other paths**  
-`/tmp/cache-mount/a` and `/tmp/cache-mount/b` locks are discarded, instead the whole disk is exclusively locked by job.
-```yaml
-jobs:
-  mount-cache-disk:
-    runs-on: depot-ubuntu-latest
-    steps:
-      - uses: depot/cache-mount@v1
-        with:
-          path: /tmp/cache-mount
-          name: my-disk
-          write-lock: |
-            /tmp/cache-mount/a
-            /tmp/cache-mount/b
-            /tmp/cache-mount
-
-```
-
-### Selective directory locking
-The cache disk doesn't support multi-write to the disk root, or within a directory, but allows multiple jobs writing into different directories at the same time. When multiple (non-overlapping) directories are listed in `write-lock`, the job acquires a lock only on them. Any other directory is lockable/writable by other jobs. We recommend locking certain directories instead of locking the whole disk. When the directory defined in `write-lock` doesn't exist, the action creates it. 
-
-#### Example:
-
-Lets assume `my-disk` has the following contents:
-```txt
-/tmp/cache-mount/
-  ├─ node_modules/
-  ├─ public/
-  ├─ src/
-  ├─ .gitignore
-  ├─ package.json
-  ├─ README.md
-```
-
-The job is the following:
-
-```yaml
-jobs:
-  mount-cache-disk:
-    runs-on: depot-ubuntu-latest
-    steps:
-      - uses: depot/cache-mount@v1
-        with:
-          path: /tmp/cache-mount
-          name: my-disk
-          write-lock: |
-            /tmp/cache-mount/node_modules
-            /tmp/cache-mount/public
-```
+| Input   | Required | Default | Description                                                                                             |
+| ------- | -------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `path`  | **Yes**  | -       | OS location to mount the cache disk.                                                                    |
+| `name`  | **Yes**  | -       | Name of the disk. Reuse the same name across runs to reference it. Created automatically on first use. |
+| `debug` | No       | `false` | Enable verbose logging.                                                                                 |
 
 ## Use cases
 
 Disk cache mostly shines as a **shared, mostly-read artifact store** that tools read by an explicit path.
 
-The recurring pattern is **one writer, many readers**: a scheduled or post-merge job populates content under a `write-lock`, then all fan-out CI jobs mount it read-only and read lock-free.
+The recurring pattern is **one writer, many readers**: a scheduled or post-merge job populates content, then all fan-out CI jobs mount it and read concurrently.
 
 Possible fits:
 - **Read-only reference data** - model weights, test fixtures, seed databases, toolchains/SDKs. Build once under a lock, read concurrently everywhere.
 - **Content-addressed tool caches** pointed at the mount via env/flag - `GOCACHE`/`GOMODCACHE`, `CARGO_HOME` registry, `~/.m2`, `~/.gradle`, `ccache`/`sccache`, Bazel/buildkit local cache.
-- **Directory-partitioned writes** - matrix or monorepo jobs that each `write-lock` only their own slice (`/tmp/cache-mount/<arch>`, `/tmp/cache-mount/<pkg>`) never contend.
+- **Directory-partitioned writes** - matrix or monorepo jobs that each write only their own slice (`/tmp/cache-mount/<arch>`, `/tmp/cache-mount/<pkg>`) to avoid contention.
 - Something you would donwload from S3 for each jobs
 
 ## Lifecycle

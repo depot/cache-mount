@@ -2,7 +2,6 @@ import * as core from '@actions/core'
 import * as exec from '@actions/exec'
 import * as http from '@actions/http-client'
 import * as fs from 'node:fs'
-import * as path from 'node:path'
 
 const METADATA_API = 'http://169.254.169.253:80'
 const ARCHIL_BIN = '/usr/bin/archil'
@@ -18,18 +17,7 @@ interface DiskTokenResponse {
 async function run() {
   const diskPath = core.getInput('path', {required: true})
   const disk = core.getInput('name', {required: true})
-  const writeLocks = core.getMultilineInput('write-lock', {required: false})
   const debug = core.getBooleanInput('debug')
-
-  // Only directories can be locked; warn about and ignore any file-like paths.
-  for (const resource of writeLocks.filter((resource) => path.extname(resource))) {
-    core.warning(`Ignoring write-lock "${resource}": only directories can be locked, not files`)
-  }
-  const dirWriteLocks = writeLocks.filter((resource) => !path.extname(resource))
-
-  // Locking the disk root covers everything, so ignore any other paths in that case.
-  const lockWholeDisk = dirWriteLocks.includes(diskPath)
-  const resources = lockWholeDisk ? [diskPath] : dirWriteLocks
 
   core.saveState('debug', debug ? 'true' : '')
 
@@ -49,60 +37,16 @@ async function run() {
   core.saveState('identifier', identifier)
   core.saveState('disk', disk)
   core.saveState('path', diskPath)
-  core.saveState('write-lock', resources)
 
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
     await exec.exec('sudo', ['mkdir', '-p', diskPath])
-    const cliArgs = ['--preserve-env=ARCHIL_MOUNT_TOKEN', ARCHIL_BIN, 'mount', ...args]
+    const cliArgs = ['--preserve-env=ARCHIL_MOUNT_TOKEN', ARCHIL_BIN, 'mount', '--conditional', ...args]
     if (debug) core.info(`Mounting disk ${disk} to ${diskPath}`)
     await exec.exec('sudo', cliArgs, {
       env: {...process.env, ARCHIL_MOUNT_TOKEN: token},
     })
   })
-
-  if (lockWholeDisk) {
-    await core.group('Locking disk', async () => {
-      if (debug) core.info(`Locking ${diskPath} for write`)
-      await exec.exec(ARCHIL_BIN, ['checkout', '-f', diskPath, '-y'])
-    })
-
-    await core.group('Fixing permissions', async () => {
-      if (debug) core.info(`Setting disk permissions to runner:runner`)
-      await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
-    })
-  } else if (resources.length > 0) {
-    const missing = resources.filter((resource) => !fs.existsSync(resource))
-
-    if (missing.length > 0) {
-      // Resources can only be created while holding the whole-disk lock.
-      await core.group('Preparing resources', async () => {
-        if (debug) core.info(`Locking ${diskPath} to create missing resources`)
-        await exec.exec(ARCHIL_BIN, ['checkout', '-f', diskPath, '-y'])
-
-        try {
-          if (debug) core.info(`Setting disk permissions to runner:runner`)
-          await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
-
-          for (const resource of missing) {
-            if (debug) core.info(`Creating directory ${resource}`)
-            await fs.promises.mkdir(resource, {recursive: true})
-            await exec.exec('sudo', ['chown', '-R', 'runner:runner', resource])
-          }
-        } finally {
-          if (debug) core.info(`Unlocking ${diskPath}`)
-          await exec.exec(ARCHIL_BIN, ['checkin', diskPath])
-        }
-      })
-    }
-
-    await core.group('Locking resources', async () => {
-      for (const resource of resources) {
-        if (debug) core.info(`Locking ${resource} for write`)
-        await exec.exec(ARCHIL_BIN, ['checkout', resource, '-y'])
-      }
-    })
-  }
 }
 
 function isPublicForkPR(debug: boolean): boolean {
