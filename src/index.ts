@@ -41,7 +41,10 @@ async function run() {
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
     await exec.exec('sudo', ['mkdir', '-p', diskPath])
-    const cliArgs = ['--preserve-env=ARCHIL_MOUNT_TOKEN', ARCHIL_BIN, 'mount', '--conditional', ...args]
+    // The API still returns --shared for older action versions that use checkout/checkin.
+    // This action uses conditional mode instead, so ensure exactly one mount mode is passed.
+    const mountArgs = args.filter((arg) => arg !== '--shared' && arg !== '--conditional')
+    const cliArgs = ['--preserve-env=ARCHIL_MOUNT_TOKEN', ARCHIL_BIN, 'mount', '--conditional', ...mountArgs]
     if (debug) core.info(`Mounting disk ${disk} to ${diskPath}`)
     await exec.exec('sudo', cliArgs, {
       env: {...process.env, ARCHIL_MOUNT_TOKEN: token},

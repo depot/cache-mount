@@ -20609,7 +20609,8 @@ async function run() {
   await group("Mounting disk", async () => {
     if (debug2) info(`Creating directory: ${diskPath}`);
     await exec("sudo", ["mkdir", "-p", diskPath]);
-    const cliArgs = ["--preserve-env=ARCHIL_MOUNT_TOKEN", ARCHIL_BIN, "mount", "--conditional", ...args];
+    const mountArgs = args.filter((arg) => arg !== "--shared" && arg !== "--conditional");
+    const cliArgs = ["--preserve-env=ARCHIL_MOUNT_TOKEN", ARCHIL_BIN, "mount", "--conditional", ...mountArgs];
     if (debug2) info(`Mounting disk ${disk} to ${diskPath}`);
     await exec("sudo", cliArgs, {
       env: { ...process.env, ARCHIL_MOUNT_TOKEN: token }
