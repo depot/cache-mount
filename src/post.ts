@@ -11,17 +11,21 @@ async function post() {
   const identifier = core.getState('identifier')
   const disk = core.getState('disk')
   const diskPath = core.getState('path')
+  const mounted = core.getState('mounted') === 'true'
   const debug = core.getState('debug') === 'true'
 
-  if (!identifier || !diskPath) {
-    core.info('No mount state found, skipping cleanup')
+  if (!identifier || !disk) {
+    core.info('No disk token state found, skipping cleanup')
     return
   }
 
-  await core.group('Unmounting disk', async () => {
-    if (debug) core.info(`Unounting disk ${disk} from ${diskPath}`)
-    await exec.exec('sudo', [ARCHIL_BIN, 'unmount', diskPath])
-  })
+  if (mounted) {
+    if (!diskPath) throw new Error('Mounted disk path state is missing')
+    await core.group('Unmounting disk', async () => {
+      if (debug) core.info(`Unmounting disk ${disk} from ${diskPath}`)
+      await exec.exec('sudo', [ARCHIL_BIN, 'unmount', diskPath])
+    })
+  }
 
   await core.group('Releasing disk token', async () => {
     const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&identifier=${encodeURIComponent(identifier)}`

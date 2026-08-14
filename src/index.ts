@@ -3,16 +3,11 @@ import * as exec from '@actions/exec'
 import * as http from '@actions/http-client'
 import * as fs from 'node:fs'
 
-const METADATA_API = 'http://169.254.169.253:80'
+import {acquireDiskToken} from './disk-token'
+
 const ARCHIL_BIN = '/usr/bin/archil'
 
 const client = new http.HttpClient('depot-cache-mount-action')
-
-interface DiskTokenResponse {
-  token: string
-  identifier: string
-  args: string[]
-}
 
 async function run() {
   const diskPath = core.getInput('path', {required: true})
@@ -27,9 +22,9 @@ async function run() {
     return
   }
 
-  await core.group('Installing archil', () => ensureArchil(debug))
-
-  const diskToken = await core.group('Acquiring disk token', () => acquireDiskToken(disk, diskPath, debug))
+  const diskToken = await core.group('Acquiring disk token', () =>
+    acquireDiskToken(client, disk, diskPath, debug ? core.info : undefined),
+  )
   if (!diskToken) {
     core.warning('Cache mounts are restricted for this repository — creating empty directory instead of mounting disk')
     await createEmptyDirectory(diskPath)
@@ -37,10 +32,13 @@ async function run() {
   }
 
   const {token, identifier, args} = diskToken
+  core.info(`Acquired disk token for identifier: ${identifier}`)
   core.setSecret(token)
   core.saveState('identifier', identifier)
   core.saveState('disk', disk)
   core.saveState('path', diskPath)
+
+  await core.group('Installing archil', () => ensureArchil(debug))
 
   await core.group('Mounting disk', async () => {
     if (debug) core.info(`Creating directory: ${diskPath}`)
@@ -53,6 +51,7 @@ async function run() {
     await exec.exec('sudo', cliArgs, {
       env: {...process.env, ARCHIL_MOUNT_TOKEN: token},
     })
+    core.saveState('mounted', 'true')
 
     if (!process.getuid || !process.getgid) throw new Error('Unable to determine the runner user')
     const uid = process.getuid()
@@ -100,23 +99,6 @@ async function ensureArchil(debug: boolean) {
   }
   core.info('Installing archil...')
   await exec.exec('bash', ['-c', 'curl -fsSL https://archil.com/install | sh'])
-}
-
-async function acquireDiskToken(
-  disk: string,
-  diskPath: string,
-  debug: boolean,
-): Promise<DiskTokenResponse | undefined> {
-  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`
-  if (debug) core.info(`Requesting disk token: POST ${url}`)
-  const res = await client.postJson<DiskTokenResponse>(url, {})
-  if (debug) core.info(`Disk token response: status=${res.statusCode}`)
-  if (res.statusCode === 403) return undefined
-  if (res.statusCode < 200 || res.statusCode >= 300 || !res.result) {
-    throw new Error(`Failed to acquire disk token (status ${res.statusCode})`)
-  }
-  core.info(`Acquired disk token for identifier: ${res.result.identifier}`)
-  return res.result
 }
 
 run().catch((error) => {

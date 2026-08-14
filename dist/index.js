@@ -20583,7 +20583,35 @@ function saveState(name, value) {
 
 // src/index.ts
 var fs3 = __toESM(require("node:fs"));
+
+// src/disk-token.ts
 var METADATA_API = "http://169.254.169.253:80";
+var CACHE_MOUNT_REPOSITORY_RESTRICTED_CODE = "cache_mount_repository_restricted";
+async function acquireDiskToken(client2, disk, diskPath, log) {
+  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`;
+  log?.(`Requesting disk token: POST ${url}`);
+  try {
+    const res = await client2.postJson(url, {});
+    log?.(`Disk token response: status=${res.statusCode}`);
+    if (!res.result) {
+      throw new Error(`Failed to acquire disk token (status ${res.statusCode})`);
+    }
+    return res.result;
+  } catch (error2) {
+    if (isCacheMountRepositoryRestrictedError(error2)) {
+      log?.(`Disk token response: status=${error2.statusCode}`);
+      return void 0;
+    }
+    throw error2;
+  }
+}
+function isCacheMountRepositoryRestrictedError(error2) {
+  if (!(error2 instanceof HttpClientError) || error2.statusCode !== 403) return false;
+  if (!error2.result || typeof error2.result !== "object") return false;
+  return "code" in error2.result && error2.result.code === CACHE_MOUNT_REPOSITORY_RESTRICTED_CODE;
+}
+
+// src/index.ts
 var ARCHIL_BIN = "/usr/bin/archil";
 var client = new HttpClient("depot-cache-mount-action");
 async function run() {
@@ -20596,18 +20624,22 @@ async function run() {
     await createEmptyDirectory(diskPath);
     return;
   }
-  await group("Installing archil", () => ensureArchil(debug2));
-  const diskToken = await group("Acquiring disk token", () => acquireDiskToken(disk, diskPath, debug2));
+  const diskToken = await group(
+    "Acquiring disk token",
+    () => acquireDiskToken(client, disk, diskPath, debug2 ? info : void 0)
+  );
   if (!diskToken) {
     warning("Cache mounts are restricted for this repository \u2014 creating empty directory instead of mounting disk");
     await createEmptyDirectory(diskPath);
     return;
   }
   const { token, identifier, args } = diskToken;
+  info(`Acquired disk token for identifier: ${identifier}`);
   setSecret(token);
   saveState("identifier", identifier);
   saveState("disk", disk);
   saveState("path", diskPath);
+  await group("Installing archil", () => ensureArchil(debug2));
   await group("Mounting disk", async () => {
     if (debug2) info(`Creating directory: ${diskPath}`);
     await exec("sudo", ["mkdir", "-p", diskPath]);
@@ -20617,6 +20649,7 @@ async function run() {
     await exec("sudo", cliArgs, {
       env: { ...process.env, ARCHIL_MOUNT_TOKEN: token }
     });
+    saveState("mounted", "true");
     if (!process.getuid || !process.getgid) throw new Error("Unable to determine the runner user");
     const uid = process.getuid();
     const gid = process.getgid();
@@ -20656,18 +20689,6 @@ async function ensureArchil(debug2) {
   }
   info("Installing archil...");
   await exec("bash", ["-c", "curl -fsSL https://archil.com/install | sh"]);
-}
-async function acquireDiskToken(disk, diskPath, debug2) {
-  const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`;
-  if (debug2) info(`Requesting disk token: POST ${url}`);
-  const res = await client.postJson(url, {});
-  if (debug2) info(`Disk token response: status=${res.statusCode}`);
-  if (res.statusCode === 403) return void 0;
-  if (res.statusCode < 200 || res.statusCode >= 300 || !res.result) {
-    throw new Error(`Failed to acquire disk token (status ${res.statusCode})`);
-  }
-  info(`Acquired disk token for identifier: ${res.result.identifier}`);
-  return res.result;
 }
 run().catch((error2) => {
   if (error2 instanceof Error) setFailed(error2.message);

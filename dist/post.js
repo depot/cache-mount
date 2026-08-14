@@ -20530,15 +20530,19 @@ async function post() {
   const identifier = getState("identifier");
   const disk = getState("disk");
   const diskPath = getState("path");
+  const mounted = getState("mounted") === "true";
   const debug2 = getState("debug") === "true";
-  if (!identifier || !diskPath) {
-    info("No mount state found, skipping cleanup");
+  if (!identifier || !disk) {
+    info("No disk token state found, skipping cleanup");
     return;
   }
-  await group("Unmounting disk", async () => {
-    if (debug2) info(`Unounting disk ${disk} from ${diskPath}`);
-    await exec("sudo", [ARCHIL_BIN, "unmount", diskPath]);
-  });
+  if (mounted) {
+    if (!diskPath) throw new Error("Mounted disk path state is missing");
+    await group("Unmounting disk", async () => {
+      if (debug2) info(`Unmounting disk ${disk} from ${diskPath}`);
+      await exec("sudo", [ARCHIL_BIN, "unmount", diskPath]);
+    });
+  }
   await group("Releasing disk token", async () => {
     const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&identifier=${encodeURIComponent(identifier)}`;
     if (debug2) info(`Requesting: DELETE ${url}`);
