@@ -23,16 +23,20 @@ async function run() {
 
   if (isPublicForkPR(debug)) {
     core.warning('Fork PR detected — creating empty directory instead of mounting disk')
-    await exec.exec('sudo', ['mkdir', '-p', diskPath])
-    await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
+    await createEmptyDirectory(diskPath)
     return
   }
 
   await core.group('Installing archil', () => ensureArchil(debug))
 
-  const {token, identifier, args} = await core.group('Acquiring disk token', () =>
-    acquireDiskToken(disk, diskPath, debug),
-  )
+  const diskToken = await core.group('Acquiring disk token', () => acquireDiskToken(disk, diskPath, debug))
+  if (!diskToken) {
+    core.warning('Cache mounts are restricted for this repository — creating empty directory instead of mounting disk')
+    await createEmptyDirectory(diskPath)
+    return
+  }
+
+  const {token, identifier, args} = diskToken
   core.setSecret(token)
   core.saveState('identifier', identifier)
   core.saveState('disk', disk)
@@ -56,6 +60,11 @@ async function run() {
     if (debug) core.info(`Setting disk ownership to ${uid}:${gid}`)
     await exec.exec('sudo', ['chown', `${uid}:${gid}`, diskPath])
   })
+}
+
+async function createEmptyDirectory(diskPath: string) {
+  await exec.exec('sudo', ['mkdir', '-p', diskPath])
+  await exec.exec('sudo', ['chown', '-R', 'runner:runner', diskPath])
 }
 
 function isPublicForkPR(debug: boolean): boolean {
@@ -93,12 +102,17 @@ async function ensureArchil(debug: boolean) {
   await exec.exec('bash', ['-c', 'curl -fsSL https://archil.com/install | sh'])
 }
 
-async function acquireDiskToken(disk: string, diskPath: string, debug: boolean): Promise<DiskTokenResponse> {
+async function acquireDiskToken(
+  disk: string,
+  diskPath: string,
+  debug: boolean,
+): Promise<DiskTokenResponse | undefined> {
   const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`
   if (debug) core.info(`Requesting disk token: POST ${url}`)
   const res = await client.postJson<DiskTokenResponse>(url, {})
   if (debug) core.info(`Disk token response: status=${res.statusCode}`)
-  if (!res.result) {
+  if (res.statusCode === 403) return undefined
+  if (res.statusCode < 200 || res.statusCode >= 300 || !res.result) {
     throw new Error(`Failed to acquire disk token (status ${res.statusCode})`)
   }
   core.info(`Acquired disk token for identifier: ${res.result.identifier}`)

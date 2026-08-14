@@ -7,7 +7,9 @@ Mount a durable (POSIX compatible), low-latency cache directory that supports mu
 
 > The cache mount is not scoped to repository. You may share content across builds within your Depot org.
 
-> Public fork PRs skip mounting and only create the target directory.
+> Organization owners can restrict cache mounts to private and internal repositories in Organization Settings.
+
+> Public fork PRs and repositories blocked by this setting skip mounting and only create the target directory.
 
 ## Usage
 

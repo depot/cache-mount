@@ -20593,15 +20593,17 @@ async function run() {
   saveState("debug", debug2 ? "true" : "");
   if (isPublicForkPR(debug2)) {
     warning("Fork PR detected \u2014 creating empty directory instead of mounting disk");
-    await exec("sudo", ["mkdir", "-p", diskPath]);
-    await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
+    await createEmptyDirectory(diskPath);
     return;
   }
   await group("Installing archil", () => ensureArchil(debug2));
-  const { token, identifier, args } = await group(
-    "Acquiring disk token",
-    () => acquireDiskToken(disk, diskPath, debug2)
-  );
+  const diskToken = await group("Acquiring disk token", () => acquireDiskToken(disk, diskPath, debug2));
+  if (!diskToken) {
+    warning("Cache mounts are restricted for this repository \u2014 creating empty directory instead of mounting disk");
+    await createEmptyDirectory(diskPath);
+    return;
+  }
+  const { token, identifier, args } = diskToken;
   setSecret(token);
   saveState("identifier", identifier);
   saveState("disk", disk);
@@ -20621,6 +20623,10 @@ async function run() {
     if (debug2) info(`Setting disk ownership to ${uid}:${gid}`);
     await exec("sudo", ["chown", `${uid}:${gid}`, diskPath]);
   });
+}
+async function createEmptyDirectory(diskPath) {
+  await exec("sudo", ["mkdir", "-p", diskPath]);
+  await exec("sudo", ["chown", "-R", "runner:runner", diskPath]);
 }
 function isPublicForkPR(debug2) {
   const eventName = process.env.GITHUB_EVENT_NAME;
@@ -20656,7 +20662,8 @@ async function acquireDiskToken(disk, diskPath, debug2) {
   if (debug2) info(`Requesting disk token: POST ${url}`);
   const res = await client.postJson(url, {});
   if (debug2) info(`Disk token response: status=${res.statusCode}`);
-  if (!res.result) {
+  if (res.statusCode === 403) return void 0;
+  if (res.statusCode < 200 || res.statusCode >= 300 || !res.result) {
     throw new Error(`Failed to acquire disk token (status ${res.statusCode})`);
   }
   info(`Acquired disk token for identifier: ${res.result.identifier}`);
