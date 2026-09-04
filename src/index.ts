@@ -2,9 +2,13 @@ import * as core from '@actions/core'
 import * as exec from '@actions/exec'
 import * as http from '@actions/http-client'
 import * as fs from 'node:fs'
+import {setTimeout as sleep} from 'node:timers/promises'
 
 const METADATA_API = 'http://169.254.169.253:80'
 const ARCHIL_BIN = '/usr/bin/archil'
+// identity-agent already retries for about 4.5s per request, so this allows roughly 30s total.
+const DISK_TOKEN_ATTEMPTS = 6
+const DISK_TOKEN_RETRY_DELAY_MS = 500
 
 const client = new http.HttpClient('depot-cache-mount-action')
 
@@ -95,14 +99,23 @@ async function ensureArchil(debug: boolean) {
 
 async function acquireDiskToken(disk: string, diskPath: string, debug: boolean): Promise<DiskTokenResponse> {
   const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`
-  if (debug) core.info(`Requesting disk token: POST ${url}`)
-  const res = await client.postJson<DiskTokenResponse>(url, {})
-  if (debug) core.info(`Disk token response: status=${res.statusCode}`)
-  if (!res.result) {
-    throw new Error(`Failed to acquire disk token (status ${res.statusCode})`)
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      if (debug) core.info(`Requesting disk token: POST ${url} (attempt ${attempt}/${DISK_TOKEN_ATTEMPTS})`)
+      const res = await client.postJson<DiskTokenResponse>(url, {})
+      if (!res.result) throw new Error(`Failed to acquire disk token (status ${res.statusCode})`)
+      core.info(`Acquired disk token for identifier: ${res.result.identifier}`)
+      return res.result
+    } catch (error) {
+      const shouldRetry =
+        error instanceof http.HttpClientError && error.statusCode === 500 && attempt < DISK_TOKEN_ATTEMPTS
+      if (!shouldRetry) throw error
+
+      if (debug) core.info(`Disk token identity is not ready (status 500); retrying in ${DISK_TOKEN_RETRY_DELAY_MS}ms`)
+      await sleep(DISK_TOKEN_RETRY_DELAY_MS)
+    }
   }
-  core.info(`Acquired disk token for identifier: ${res.result.identifier}`)
-  return res.result
 }
 
 run().catch((error) => {

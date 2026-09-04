@@ -20583,8 +20583,11 @@ function saveState(name, value) {
 
 // src/index.ts
 var fs3 = __toESM(require("node:fs"));
+var import_promises = require("node:timers/promises");
 var METADATA_API = "http://169.254.169.253:80";
 var ARCHIL_BIN = "/usr/bin/archil";
+var DISK_TOKEN_ATTEMPTS = 6;
+var DISK_TOKEN_RETRY_DELAY_MS = 500;
 var client = new HttpClient("depot-cache-mount-action");
 async function run() {
   const diskPath = getInput("path", { required: true });
@@ -20653,14 +20656,20 @@ async function ensureArchil(debug2) {
 }
 async function acquireDiskToken(disk, diskPath, debug2) {
   const url = `${METADATA_API}/archil/disk-token?disk=${encodeURIComponent(disk)}&disk_path=${encodeURIComponent(diskPath)}`;
-  if (debug2) info(`Requesting disk token: POST ${url}`);
-  const res = await client.postJson(url, {});
-  if (debug2) info(`Disk token response: status=${res.statusCode}`);
-  if (!res.result) {
-    throw new Error(`Failed to acquire disk token (status ${res.statusCode})`);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      if (debug2) info(`Requesting disk token: POST ${url} (attempt ${attempt}/${DISK_TOKEN_ATTEMPTS})`);
+      const res = await client.postJson(url, {});
+      if (!res.result) throw new Error(`Failed to acquire disk token (status ${res.statusCode})`);
+      info(`Acquired disk token for identifier: ${res.result.identifier}`);
+      return res.result;
+    } catch (error2) {
+      const shouldRetry = error2 instanceof HttpClientError && error2.statusCode === 500 && attempt < DISK_TOKEN_ATTEMPTS;
+      if (!shouldRetry) throw error2;
+      if (debug2) info(`Disk token identity is not ready (status 500); retrying in ${DISK_TOKEN_RETRY_DELAY_MS}ms`);
+      await (0, import_promises.setTimeout)(DISK_TOKEN_RETRY_DELAY_MS);
+    }
   }
-  info(`Acquired disk token for identifier: ${res.result.identifier}`);
-  return res.result;
 }
 run().catch((error2) => {
   if (error2 instanceof Error) setFailed(error2.message);
