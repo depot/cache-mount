@@ -20647,10 +20647,6 @@ function isPublicForkPR(debug2) {
   return true;
 }
 async function ensureArchil(debug2) {
-  if (fs3.existsSync(ARCHIL_BIN)) {
-    info("archil already installed");
-    return;
-  }
   info("Installing archil...");
   await exec("bash", ["-c", "curl -fsSL https://archil.com/install | sh"]);
 }

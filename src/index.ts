@@ -89,10 +89,11 @@ function isPublicForkPR(debug: boolean): boolean {
 }
 
 async function ensureArchil(debug: boolean) {
-  if (fs.existsSync(ARCHIL_BIN)) {
-    core.info('archil already installed')
-    return
-  }
+  // Re-enable once v0.10.0+ was installed on the base images
+  // if (fs.existsSync(ARCHIL_BIN)) {
+  //   core.info('archil already installed')
+  //   return
+  // }
   core.info('Installing archil...')
   await exec.exec('bash', ['-c', 'curl -fsSL https://archil.com/install | sh'])
 }
